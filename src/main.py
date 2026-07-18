@@ -273,13 +273,13 @@ while running:
 
         if event.type == pygame.KEYDOWN and not g.animating and not g.grid_expanding and not g.switch_animating and not g.game_over:
             match event.key:
-                case pygame.K_UP:
+                case pygame.K_UP | pygame.K_k:
                     func.process_move(g, "up")
-                case pygame.K_DOWN:
+                case pygame.K_DOWN | pygame.K_j:
                     func.process_move(g, "down")
-                case pygame.K_LEFT:
+                case pygame.K_LEFT | pygame.K_h:
                     func.process_move(g, "left")
-                case pygame.K_RIGHT:
+                case pygame.K_RIGHT | pygame.K_l:
                     func.process_move(g, "right")
                 case pygame.K_ESCAPE:
                     if g.selecting_bomb_position:

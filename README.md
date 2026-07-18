@@ -34,7 +34,7 @@ bash compile.sh
 # Run
 cd src
 
-source venv/bin/activate.fish
+source venv/bin/activate.fish # Drop the fish if you are not using that shell or do not know what a shell is.
 
 python3 main.py
 ```
