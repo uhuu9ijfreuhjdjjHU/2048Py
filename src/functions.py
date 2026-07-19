@@ -588,6 +588,39 @@ def get_cached_score(g, score_value):
         g._score_cache['surface'] = g.font.render(text, True, UI_COLORS['text'])
     return g._score_cache['surface']
 
+def get_cached_points(g, points_value):
+    text = f"Points: {points_value}"
+    if g._points_cache['text'] != text or _color_transition['active']:
+        g._points_cache['text'] = text
+        g._points_cache['surface'] = g.font.render(text, True, UI_COLORS['text'])
+    return g._points_cache['surface']
+
+def draw_momentum_arrows(g):
+    x = g.ui_config['momentum_x']
+    y = g.ui_config['momentum_y']
+    size = 24
+    spacing = 40
+    h = size // 2
+    # button_disabled matches the background in most schemes, so dim arrows are
+    # blended from the background toward text_dim to stay faintly visible.
+    grey = lerp_color(COLORS[0], UI_COLORS['text_dim'], 0.35)
+    for i, d in enumerate(["left", "up", "down", "right"]):
+        cx = x + h + i * spacing
+        cy = y + h
+        highlighted = d == g.momentum['direction']
+        color = UI_COLORS['accent_green'] if highlighted else grey
+        points = {
+            'up':    [(cx, cy - h), (cx - h, cy + h), (cx + h, cy + h)],
+            'down':  [(cx, cy + h), (cx - h, cy - h), (cx + h, cy - h)],
+            'left':  [(cx - h, cy), (cx + h, cy - h), (cx + h, cy + h)],
+            'right': [(cx + h, cy), (cx - h, cy - h), (cx - h, cy + h)],
+        }[d]
+        pygame.draw.polygon(g.render_surface, color, points)
+        if highlighted:
+            pygame.draw.polygon(g.render_surface, UI_COLORS['text'], points, 2)
+    mult_text = g.small_font.render(f"x{g.momentum['multiplier']}", True, UI_COLORS['accent_green'])
+    g.render_surface.blit(mult_text, (x + 4 * spacing + 10, y))
+
 def prepare_tile_surface(g, value, scale):
     if scale == 1.0 and value in g.tile_cache:
         return g.tile_cache[value]
@@ -627,7 +660,11 @@ def sync_grid_from_engine(g):
     g.rows = g.engine.rows()
     g.cols = g.engine.cols()
     g.playingGrid = np.array(g.engine.get_grid_values(), dtype=int).reshape(g.rows, g.cols)
-    g.points = g.engine.score()
+    # Score is mirrored from the engine (plus Momentum bonuses); points earn the
+    # same amount but are spent in the shop, so only the delta is credited.
+    new_score = g.engine.score() + g.score_bonus
+    g.points += new_score - g.score
+    g.score = new_score
     g.passive_map = {(r, c): ptype for r, c, ptype in g.engine.get_passive_map()}
 
 def process_move(g, direction):
@@ -641,6 +678,21 @@ def process_move(g, direction):
 
     g.switch_used_this_turn = False
     sync_grid_from_engine(g)
+
+    # Momentum upgrade: combos in the highlighted direction get the multiplier,
+    # which doubles each consecutive success and resets when the chain drops.
+    # The highlighted direction re-rolls after every move.
+    if g.momentum['owned']:
+        if direction == g.momentum['direction'] and result.points_gained > 0:
+            bonus = result.points_gained * (g.momentum['multiplier'] - 1)
+            g.score_bonus += bonus
+            g.score += bonus
+            g.points += bonus
+            print(f"Momentum x{g.momentum['multiplier']}! +{bonus} bonus")
+            g.momentum['multiplier'] *= 2
+        else:
+            g.momentum['multiplier'] = 2
+        g.momentum['direction'] = rand.choice(["up", "down", "left", "right"])
 
     # Phase 1: regular tiles only
     g.moving_tiles = [(m.start_row, m.start_col, m.end_row, m.end_col, m.value, 0)
@@ -715,7 +767,7 @@ def process_move(g, direction):
     g.frozen_tiles.clear()
 
     print()
-    print(f"Score: {g.points} (+{result.points_gained})")
+    print(f"Score: {g.score} (+{result.points_gained}) | Points: {g.points}")
 
 def start_grid_expansion(g):
     g.expand_old_sx = g.start_x
@@ -1276,7 +1328,7 @@ def draw_game_over(g):
     title_rect = title.get_rect(center=(g.RENDER_WIDTH // 2, panel_y + 80))
     g.render_surface.blit(title, title_rect)
 
-    score_line = g.font.render(f"Final Score: {g.points}", True, UI_COLORS['text'])
+    score_line = g.font.render(f"Final Score: {g.score}", True, UI_COLORS['text'])
     score_rect = score_line.get_rect(center=(g.RENDER_WIDTH // 2, panel_y + 150))
     g.render_surface.blit(score_line, score_rect)
 
@@ -1301,7 +1353,7 @@ def draw_shop(g):
     title_rect = title.get_rect(center=(g.RENDER_WIDTH // 2, panel_y + 40))
     g.render_surface.blit(title, title_rect)
 
-    score_text = g.small_font.render(f"Score: {g.points}", True, UI_COLORS['accent_green'])
+    score_text = g.small_font.render(f"Points: {g.points}", True, UI_COLORS['accent_green'])
     score_rect = score_text.get_rect(center=(g.RENDER_WIDTH // 2, panel_y + 80))
     g.render_surface.blit(score_text, score_rect)
 
@@ -1350,6 +1402,34 @@ def draw_shop(g):
         plus_rect = plus_text.get_rect(center=(plus_x + btn_size // 2, btn_y + btn_size // 2))
         g.render_surface.blit(plus_text, plus_rect)
 
+    # Momentum upgrade row (unlocked after the second expansion)
+    momentum_buy_rect = None
+    if g.expansion_count >= 2:
+        y = row_y_start + len(g.abilities) * row_height
+        name_text = g.font.render('Momentum', True, UI_COLORS['text'])
+        g.render_surface.blit(name_text, (panel_x + 30, y))
+        desc_text = g.small_font.render('Combos in the marked direction double, chaining each success', True, UI_COLORS['text_dim'])
+        g.render_surface.blit(desc_text, (panel_x + 30, y + 32))
+
+        if g.momentum['owned']:
+            owned_text = g.small_font.render('OWNED', True, UI_COLORS['accent_green'])
+            g.render_surface.blit(owned_text, (panel_x + 560, y + 20))
+        else:
+            cost_text = g.small_font.render(f"{g.momentum['cost']}pts", True, UI_COLORS['accent_blue'])
+            g.render_surface.blit(cost_text, (panel_x + 350, y + 10))
+
+            buy_w, buy_h = 110, 40
+            buy_x, buy_y = panel_x + 560, y + 10
+            can_buy = g.points >= g.momentum['cost']
+            buy_hover = buy_x <= mouse_x <= buy_x + buy_w and buy_y <= mouse_y <= buy_y + buy_h
+            buy_color = UI_COLORS['accent_green'] if buy_hover and can_buy else UI_COLORS['button_disabled']
+            pygame.draw.rect(g.render_surface, buy_color, (buy_x, buy_y, buy_w, buy_h))
+            pygame.draw.rect(g.render_surface, UI_COLORS['border'], (buy_x, buy_y, buy_w, buy_h), 2)
+            buy_text = g.font.render("BUY", True, UI_COLORS['text'])
+            buy_rect = buy_text.get_rect(center=(buy_x + buy_w // 2, buy_y + buy_h // 2))
+            g.render_surface.blit(buy_text, buy_rect)
+            momentum_buy_rect = (buy_x, buy_y, buy_w, buy_h)
+
     div_y = panel_y + panel_h - 100
     pygame.draw.line(g.render_surface, UI_COLORS['border'], (panel_x + 30, div_y), (panel_x + panel_w - 30, div_y), 2)
 
@@ -1370,6 +1450,7 @@ def draw_shop(g):
         'btn_size': btn_size, 'minus_x': minus_x,
         'plus_x_offset': btn_size + 70,
         'done_rect': (done_x, done_y, done_w, done_h),
+        'momentum_buy_rect': momentum_buy_rect,
     }
 
 
@@ -1400,10 +1481,21 @@ def handle_shop_click(g, mouse_pos):
                 ability['charges'] += 1
             return
 
+    buy_rect = layout.get('momentum_buy_rect')
+    if buy_rect:
+        bx, by, bw, bh = buy_rect
+        if bx <= mouse_x <= bx + bw and by <= mouse_y <= by + bh:
+            if not g.momentum['owned'] and g.points >= g.momentum['cost']:
+                g.points -= g.momentum['cost']
+                g.momentum['owned'] = True
+                g.momentum['direction'] = rand.choice(["up", "down", "left", "right"])
+                print(f"Momentum purchased! Bonus direction: {g.momentum['direction']}")
+            return
+
     dx, dy, dw, dh = layout['done_rect']
     if dx <= mouse_x <= dx + dw and dy <= mouse_y <= dy + dh:
         g.shop_open = False
-        print(f"Shop closed. Score: {g.points}")
+        print(f"Shop closed. Points: {g.points}")
         if g.pending_passives:
             open_next_passive_menu(g)
         return

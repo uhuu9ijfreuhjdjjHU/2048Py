@@ -80,6 +80,10 @@ g.ui_config = {
     # Spacing
     'score_x': 50,             # X position of score text from left edge
     'score_y': 50,             # Y position of score text from top edge
+    'points_x': 50,            # X position of points text from left edge
+    'points_y': 90,            # Y position of points text from top edge
+    'momentum_x': 50,          # X position of momentum direction arrows
+    'momentum_y': 135,         # Y position of momentum direction arrows
 }
 
 # Grid state - tracks current grid dimensions and tile size
@@ -104,8 +108,11 @@ func.recalculate_positions(g)
 g.engine = engine.GameEngine(g.rows, g.cols)
 g.playingGrid = np.array(g.engine.get_grid_values(), dtype=int).reshape(g.rows, g.cols)
 
-# Score tracking
+# Score tracking: score is the permanent record, points are spendable currency.
+# Both accumulate together, but only points are deducted by shop purchases.
+g.score = g.engine.score()
 g.points = g.engine.score()
+g.score_bonus = 0  # cumulative Momentum bonus, added on top of the engine score
 
 # Audio
 g.audio = AudioManager("assets/audio/music/2048squaredMain.mp3")
@@ -123,6 +130,8 @@ g.abilities = [
     {'name': 'Switch', 'cost': 1550, 'charges': 0, 'description': 'Move any tile'},
 ]
 g.expansion_count = 0
+# Momentum upgrade: combos in a highlighted direction get a doubling multiplier
+g.momentum = {'owned': False, 'cost': 8000, 'direction': None, 'multiplier': 2}
 g.selecting_bomb_position = False
 g.selecting_freeze_position = False
 g.selecting_switch_position = False
@@ -200,6 +209,7 @@ g.expand_direction = ""
 # Pre-rendered tile surface cache
 g.tile_cache = {}
 g._score_cache = {'text': None, 'surface': None}
+g._points_cache = {'text': None, 'surface': None}
 func.init_tile_cache(g)
 
 # Particle system for bomb explosions
@@ -335,9 +345,13 @@ while running:
     # Draw to pygame surface (background color from current scheme)
     g.render_surface.fill(func.COLORS[0])
 
-    # Draw score (cached - only re-renders when score changes)
-    score_text = func.get_cached_score(g, g.points)
+    # Draw score and points (cached - only re-render when values change)
+    score_text = func.get_cached_score(g, g.score)
     g.render_surface.blit(score_text, (g.ui_config['score_x'], g.ui_config['score_y']))
+    points_text = func.get_cached_points(g, g.points)
+    g.render_surface.blit(points_text, (g.ui_config['points_x'], g.ui_config['points_y']))
+    if g.momentum['owned']:
+        func.draw_momentum_arrows(g)
 
     # Temporarily override start positions for expansion animation
     _expand_real_sx, _expand_real_sy = g.start_x, g.start_y
