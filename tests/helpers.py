@@ -15,6 +15,7 @@ import game2048_engine as eng  # noqa: E402
 SLOW = 1
 CONTRARIAN = 2
 SLOW_CONTRARIAN = 3
+COMBO = 4
 
 EMPTY, BOMB, SNAIL, WALL = 0, -1, -2, -3
 
@@ -52,6 +53,10 @@ def passive_map(e):
     return {(r, c): p for r, c, p in e.get_passive_map()}
 
 
+def combo_directions(e):
+    return {(r, c): d for r, c, d in e.get_combo_directions()}
+
+
 def grid_minus_spawn(e, result):
     """Board with the tile spawned by this turn zeroed out, so scenario tests can
     assert expected grids without caring where the random spawn landed.
@@ -86,7 +91,7 @@ def check_invariants(e, context=""):
                 f"{context}: invalid tile value {v} at {(r, c)}"
 
     for (r, c), p in passive_map(e).items():
-        assert 1 <= p <= 3, f"{context}: invalid passive bitmask {p} at {(r, c)}"
+        assert 1 <= p <= 7, f"{context}: invalid passive bitmask {p} at {(r, c)}"
         assert g[r][c] >= 2, \
             f"{context}: passive {p} on non-numbered tile (value {g[r][c]}) at {(r, c)}"
 

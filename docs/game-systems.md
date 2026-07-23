@@ -12,8 +12,13 @@ Passives are bitmask flags assigned to numbered tiles. A tile can hold multiple 
 | `A_LITTLE_SLOW` | 1 | Tile moves 1 cell/turn; frozen during the player's regular move phase |
 | `CONTRARIAN` | 2 | Tile moves in the direction opposite to the player's input |
 | Slow Contrarian | 3 | Both flags set; moves 1 cell/turn in the opposite direction |
+| `COMBO` | 4 | Merging the tile scores an extra `new_value × streak` on top of the normal merge score, but only if the player's move direction matches the tile's currently stored direction; streak grows by 1 on a matching ("hit") merge and resets to 0 on a miss (no merge that turn, or a merge in the wrong direction) |
 
 A merged tile carries the **OR of both source tiles' passives**, in every merge path (regular compaction, behind-merges, contrarian merges, slow-mover arrivals). Merging a Slow tile with a Contrarian tile is how Slow Contrarian arises — the passive menu only ever targets passive-free tiles.
+
+Every tile also carries a `combo_streak` counter and a `combo_direction` (not passive bits themselves) that this same merge-OR logic keeps in sync: on a merge, the surviving tile's streak is `max(a, b)` (the +1 for an actual hit is applied centrally, see below) and its direction is the OR of whichever source tiles actually carried `COMBO`. Both fields are otherwise unused unless the tile is Combo.
+
+A Combo tile's stored direction re-rolls to a fresh random direction after every turn, regardless of hit or miss — mirroring the older global "Momentum" mechanic's re-rolling highlighted direction, but scoped per tile. When two Combo tiles merge into each other, the move counts as a hit if it matches **either** source tile's pre-move direction. A tile newly gaining the `COMBO` passive (via the passive menu) is rolled a direction immediately, so it has a sensible value to display before its first move.
 
 ### How Passives Are Assigned
 
@@ -30,7 +35,8 @@ After each turn, `PassiveRoller::roll()` rolls once per merge:
 
 - **Green dot** = A_LITTLE_SLOW bit is set
 - **Red dot** = CONTRARIAN bit is set
-- Both dots shown for combined passive (bitmask = 3)
+- **Blue dot** = COMBO bit is set
+- One dot per set bit, shown side by side for combined passives
 
 ### Slow Tile Behavior Detail
 

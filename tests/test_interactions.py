@@ -315,6 +315,119 @@ def test_slow_mover_arrival_merge_combines_passives():
     H.check_invariants(e)
 
 
+# ─── Combo passive ───
+#
+# Combo's streak only grows on a "hit": the move direction must match the
+# tile's stored combo_direction, which is rolled randomly and re-rolled every
+# turn. These tests read the actual stored direction via get_combo_directions()
+# and build the merge around it, rather than assuming any particular direction.
+
+def _combo_merge_setup(e, row, col, direction):
+    """Place a second matching tile so moving `direction` merges it into the
+    tile at (row, col); returns the (row, col) the merged tile lands at."""
+    value = H.cell(e, row, col)
+    rows, cols = e.rows(), e.cols()
+    if direction in ("left", "right"):
+        e.set_tile(row, (col + 1) % cols, value)
+        return (row, 0 if direction == "left" else cols - 1)
+    e.set_tile((row + 1) % rows, col, value)
+    return (0 if direction == "up" else rows - 1, col)
+
+
+def test_combo_tile_scores_bonus_on_first_merge():
+    e = H.make_engine()
+    H.set_grid(e, [[2, 0, 0, 0], Z, Z, Z], passives={(0, 0): H.COMBO})
+    direction = H.combo_directions(e)[(0, 0)]
+    dest = _combo_merge_setup(e, 0, 0, direction)
+
+    score_before = e.score()
+    res = e.process_move(direction)
+    assert H.cell(e, *dest) == 4
+    assert H.passive_map(e).get(dest) == H.COMBO
+    # Base score (4) plus a combo bonus of new_value * streak (streak 1 on the
+    # tile's first, direction-matching merge): 4 + 4*1 = 8.
+    assert res.points_gained == 8
+    assert e.score() == score_before + 8
+    H.check_invariants(e)
+
+
+def test_combo_streak_grows_on_consecutive_merges():
+    e = H.make_engine()
+    H.set_grid(e, [[2, 0, 0, 0], Z, Z, Z], passives={(0, 0): H.COMBO})
+    direction1 = H.combo_directions(e)[(0, 0)]
+    dest1 = _combo_merge_setup(e, 0, 0, direction1)
+    res1 = e.process_move(direction1)
+    assert H.cell(e, *dest1) == 4
+    assert res1.points_gained == 8  # base 4 + combo bonus 4*1 (streak 1, hit)
+
+    # Clear the tile spawned by turn 1 so it can't interfere with turn 2's setup.
+    for r in range(4):
+        for c in range(4):
+            if (r, c) != dest1:
+                e.set_tile(r, c, 0)
+
+    # Direction re-rolls every turn (hit or miss); read the new one and set up
+    # a matching second hit around it.
+    direction2 = H.combo_directions(e)[dest1]
+    dest2 = _combo_merge_setup(e, *dest1, direction2)
+    score_before = e.score()
+    res2 = e.process_move(direction2)
+    assert H.cell(e, *dest2) == 8
+    # Second consecutive hit: streak grows to 2, bonus = 8*2 = 16.
+    assert res2.points_gained == 24  # base 8 + combo bonus 8*2 (streak 2)
+    assert e.score() == score_before + 24
+    H.check_invariants(e)
+
+
+def test_combo_streak_resets_after_a_turn_without_merging():
+    e = H.make_engine()
+    H.set_grid(e, [[2, 0, 0, 0], Z, Z, Z], passives={(0, 0): H.COMBO})
+    direction1 = H.combo_directions(e)[(0, 0)]
+    dest1 = _combo_merge_setup(e, 0, 0, direction1)
+    res1 = e.process_move(direction1)
+    assert H.cell(e, *dest1) == 4
+    assert res1.points_gained == 8  # streak 1 (hit)
+
+    # Clear every tile except the combo tile, then make a valid move that
+    # can't merge it (no other equal-value tile on the board) — it goes a
+    # turn without merging and loses its streak, wherever it ends up.
+    for r in range(4):
+        for c in range(4):
+            if (r, c) != dest1:
+                e.set_tile(r, c, 0)
+    e.set_tile(3, 3, 8)  # filler, distinct value: guarantees no merge
+    e.process_move("up")
+    combo_pos = next(iter(H.passive_map(e)))
+    assert H.passive_map(e)[combo_pos] == H.COMBO
+
+    direction3 = H.combo_directions(e)[combo_pos]
+    dest3 = _combo_merge_setup(e, *combo_pos, direction3)
+    score_before = e.score()
+    res3 = e.process_move(direction3)
+    assert H.cell(e, *dest3) == 8
+    # Streak was reset by the non-merging turn above: back to 1, not 2.
+    assert res3.points_gained == 16  # base 8 + combo bonus 8*1
+    assert e.score() == score_before + 16
+    H.check_invariants(e)
+
+
+def test_combo_streak_resets_on_wrong_direction_merge():
+    e = H.make_engine()
+    H.set_grid(e, [[2, 0, 0, 0], Z, Z, Z], passives={(0, 0): H.COMBO})
+    stored_direction = H.combo_directions(e)[(0, 0)]
+    wrong_direction = next(d for d in H.DIRECTIONS if d != stored_direction)
+    dest = _combo_merge_setup(e, 0, 0, wrong_direction)
+
+    score_before = e.score()
+    res = e.process_move(wrong_direction)
+    assert H.cell(e, *dest) == 4
+    # Merge happened, but the direction didn't match the tile's stored one:
+    # a miss. Only the base merge score (4) is awarded, no combo bonus.
+    assert res.points_gained == 4
+    assert e.score() == score_before + 4
+    H.check_invariants(e)
+
+
 # ─── Switch ───
 
 def test_switch_drops_slow_mover_tracking():

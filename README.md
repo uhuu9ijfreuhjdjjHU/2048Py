@@ -1,6 +1,16 @@
 # 2048 rogue like using pygame.
 
-With the latest changes; the moderngl version of the game should run at a playable framerate.
+## About
+
+2048Py(Title pending) is a pre-alpha cozy-vibe rogue-like 2048 clone, it includes; passive abilities, power-ups, player obstructions, and other cool little touches that will hopefully make the game feel like more than just 2048.
+
+## Goals
+
+My goals for the game include however not limited to;
+
+- At least five enemey-like obstructions.
+- Fifty passive effects.
+- Twenty power-ups.
 
 ![](sample/sample0.png)
 ![](sample/sample1.png)
@@ -76,6 +86,6 @@ python src\main.py
 [^1]:
     Kudos to @SheviTGP for his help testing and improving Windows instructions.
 [^1]
-[^1]:
+[^2]:
     Huge thanks to merionette for composing such great music.
-[^1]
+[^2]

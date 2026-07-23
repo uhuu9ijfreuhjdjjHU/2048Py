@@ -1,3 +1,11 @@
+0.9.25 -- Reimplementation of combo mechanic as tile passive.
+
+    Last patch implemented a combo count mechanic. Unfortunately the combo mechanic easily lead to snowballing, making the game trivial, I have decided it would be best to keep this as a tile passive.
+
+0.8.25 -- Added combo mechanic.
+
+0.8.24 -- Updated game seeding.
+
 0.8.23 -- Fixed audio skipping.
 
 0.8.22 -- Fixed cracking and performence issues with track when low-pass filter kicks in.

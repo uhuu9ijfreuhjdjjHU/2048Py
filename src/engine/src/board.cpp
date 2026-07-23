@@ -56,6 +56,8 @@ std::pair<int,int> Board::spawn_number(const std::set<std::pair<int,int>>& exclu
     auto [r, c] = empties[dist(rng_)];
     grid_[r][c].value = 1024;
     grid_[r][c].passive = PassiveType::NONE;
+    grid_[r][c].combo_streak = 0;
+    grid_[r][c].combo_direction = 0;
     return {r, c};
 }
 

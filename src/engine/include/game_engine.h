@@ -36,6 +36,7 @@ public:
     std::vector<std::tuple<int,int,int>> get_passive_map() const;
     std::vector<SlowMoverState> get_slow_movers() const;
     std::vector<RandomMoverState> get_random_movers() const;
+    std::vector<std::tuple<int,int,std::string>> get_combo_directions() const;
 
     int rows() const { return board_.rows(); }
     int cols() const { return board_.cols(); }
@@ -63,6 +64,7 @@ private:
 
     std::vector<SlowMoverUpdate> advance_slow_movers();
     std::vector<RandomMoverUpdate> advance_random_movers(std::set<std::pair<int,int>>& bomb_destroyed);
+    int roll_combo_direction();
     std::set<std::pair<int,int>> get_effective_frozen() const;
     void detonate_adjacent_bombs(TurnResult& result, std::set<std::pair<int,int>>& effective_frozen, bool check_frozen_tiles = false);
     void cascade_fill_behind(int empty_r, int empty_c, int dr, int dc,

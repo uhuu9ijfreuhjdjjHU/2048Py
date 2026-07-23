@@ -23,7 +23,8 @@ PYBIND11_MODULE(game2048_engine, m) {
     py::enum_<PassiveType>(m, "PassiveType")
         .value("NONE", PassiveType::NONE)
         .value("A_LITTLE_SLOW", PassiveType::A_LITTLE_SLOW)
-        .value("CONTRARIAN", PassiveType::CONTRARIAN);
+        .value("CONTRARIAN", PassiveType::CONTRARIAN)
+        .value("COMBO", PassiveType::COMBO);
 
     m.def("passive_name", &passive_name);
     m.def("passive_name", [](int t) { return passive_name(static_cast<PassiveType>(t)); });
@@ -114,6 +115,7 @@ PYBIND11_MODULE(game2048_engine, m) {
         .def("get_passive_map", &GameEngine::get_passive_map)
         .def("get_slow_movers", &GameEngine::get_slow_movers)
         .def("get_random_movers", &GameEngine::get_random_movers)
+        .def("get_combo_directions", &GameEngine::get_combo_directions)
         .def("rows", &GameEngine::rows)
         .def("cols", &GameEngine::cols)
         .def("score", &GameEngine::score)

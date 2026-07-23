@@ -170,7 +170,47 @@ TurnResult GameEngine::process_move(const std::string& direction) {
     for (const auto& m : result.slow_tile_merges) result.points_gained += m.new_value;
     for (const auto& u : result.slow_mover_updates)
         if (u.is_merge) result.points_gained += u.value;
+
+    // Combo passive: a merged tile carrying it scores an extra new_value * streak,
+    // but the streak only grows on a "hit" — the player's move direction matching
+    // the direction the tile had stored before this move (per-tile re-implementation
+    // of the old global Momentum mechanic; see COMBO_DIR_* in passive.h). A miss
+    // (didn't merge, or merged but the direction didn't match) resets the streak.
+    // Two Combo tiles merging into each other counts as a hit if the move matches
+    // either source tile's direction (combine_combo_direction already OR'd both
+    // pre-move directions into this tile's combo_direction at the merge site).
+    int move_bit = direction_to_combo_bit(direction);
+    std::set<std::pair<int,int>> merged_positions;
+    for (const auto& m : result.merges)           merged_positions.insert({m.row, m.col});
+    for (const auto& m : result.slow_tile_merges) merged_positions.insert({m.row, m.col});
+    for (const auto& u : result.slow_mover_updates)
+        if (u.is_merge) merged_positions.insert({u.new_row, u.new_col});
+    for (const auto& [r, c] : merged_positions) {
+        Tile& t = board_.at(r, c);
+        if (!has_passive(t.passive, PassiveType::COMBO)) continue;
+        if (t.combo_direction & move_bit) {
+            t.combo_streak += 1;
+            result.points_gained += t.value * t.combo_streak;
+        } else {
+            t.combo_streak = 0;
+        }
+    }
     score_ += result.points_gained;
+
+    // Any tile that didn't merge this turn loses its streak (tracked on every
+    // tile regardless of passive; see combine_combo_streak in passive.h).
+    for (int r = 0; r < board_.rows(); r++)
+        for (int c = 0; c < board_.cols(); c++)
+            if (board_.at(r, c).is_numbered() && !merged_positions.count({r, c}))
+                board_.at(r, c).combo_streak = 0;
+
+    // Combo direction re-rolls every turn regardless of hit/miss/merge status —
+    // mirrors the old global Momentum mechanic's "the highlighted direction
+    // re-rolls after every move", just applied per Combo tile.
+    for (int r = 0; r < board_.rows(); r++)
+        for (int c = 0; c < board_.cols(); c++)
+            if (board_.at(r, c).is_numbered() && has_passive(board_.at(r, c).passive, PassiveType::COMBO))
+                board_.at(r, c).combo_direction = roll_combo_direction();
 
     std::set<std::pair<int,int>> excluded;
     for (const auto& m  : result.merges)  excluded.insert({m.row, m.col});
@@ -229,12 +269,25 @@ TurnResult GameEngine::process_move(const std::string& direction) {
 void GameEngine::set_tile(int row, int col, int value, int passive_type) {
     board_.at(row, col).value = value;
     board_.at(row, col).passive = static_cast<PassiveType>(passive_type);
+    board_.at(row, col).combo_streak = 0;
+    board_.at(row, col).combo_direction =
+        has_passive(static_cast<PassiveType>(passive_type), PassiveType::COMBO) ? roll_combo_direction() : 0;
 }
 
 void GameEngine::assign_passive(int row, int col, int passive_type) {
     if (!board_.at(row, col).is_numbered()) return;
     int current = static_cast<int>(board_.at(row, col).passive);
+    bool combo_newly_set = !has_passive(static_cast<PassiveType>(current), PassiveType::COMBO) &&
+                           has_passive(static_cast<PassiveType>(passive_type), PassiveType::COMBO);
     board_.at(row, col).passive = static_cast<PassiveType>(current | passive_type);
+    if (combo_newly_set)
+        board_.at(row, col).combo_direction = roll_combo_direction();
+}
+
+int GameEngine::roll_combo_direction() {
+    static const int bits[4] = {COMBO_DIR_UP, COMBO_DIR_DOWN, COMBO_DIR_LEFT, COMBO_DIR_RIGHT};
+    std::uniform_int_distribution<int> dist(0, 3);
+    return bits[dist(rng_)];
 }
 
 void GameEngine::place_bomb(int row, int col) {
@@ -280,6 +333,17 @@ std::vector<std::tuple<int,int,int>> GameEngine::get_passive_map() const {
 
 std::vector<SlowMoverState> GameEngine::get_slow_movers() const {
     return slow_movers_;
+}
+
+std::vector<std::tuple<int,int,std::string>> GameEngine::get_combo_directions() const {
+    std::vector<std::tuple<int,int,std::string>> result;
+    for (int r = 0; r < board_.rows(); r++)
+        for (int c = 0; c < board_.cols(); c++) {
+            const Tile& t = board_.at(r, c);
+            if (t.is_numbered() && has_passive(t.passive, PassiveType::COMBO))
+                result.push_back({r, c, combo_bit_to_direction(t.combo_direction)});
+        }
+    return result;
 }
 
 void GameEngine::complete_expansion(const std::string& direction) {
@@ -344,11 +408,20 @@ std::vector<SlowMoverUpdate> GameEngine::advance_slow_movers() {
             if (board_.at(next_r, next_c).is_numbered() &&
                 board_.at(next_r, next_c).value == sm.value) {
                 int new_value = sm.value * 2;
+                int merged_streak = combine_combo_streak(board_.at(sm.current_row, sm.current_col).combo_streak,
+                                                          board_.at(next_r, next_c).combo_streak);
+                int merged_direction = combine_combo_direction(
+                    sm.passive, board_.at(sm.current_row, sm.current_col).combo_direction,
+                    board_.at(next_r, next_c).passive, board_.at(next_r, next_c).combo_direction);
                 board_.at(sm.current_row, sm.current_col).value = 0;
                 board_.at(sm.current_row, sm.current_col).passive = PassiveType::NONE;
+                board_.at(sm.current_row, sm.current_col).combo_streak = 0;
+                board_.at(sm.current_row, sm.current_col).combo_direction = 0;
                 board_.at(next_r, next_c).value = new_value;
                 board_.at(next_r, next_c).passive = combine_passives(sm.passive,
                                                                      board_.at(next_r, next_c).passive);
+                board_.at(next_r, next_c).combo_streak = merged_streak;
+                board_.at(next_r, next_c).combo_direction = merged_direction;
                 sm.active = false;
                 updates.push_back({sm.current_row, sm.current_col,
                                    next_r, next_c, new_value, true, true});
@@ -365,8 +438,12 @@ std::vector<SlowMoverUpdate> GameEngine::advance_slow_movers() {
         update.new_row = next_r;         update.new_col = next_c;
         update.value = sm.value;
 
+        board_.at(next_r, next_c).combo_streak = board_.at(sm.current_row, sm.current_col).combo_streak;
+        board_.at(next_r, next_c).combo_direction = board_.at(sm.current_row, sm.current_col).combo_direction;
         board_.at(sm.current_row, sm.current_col).value = 0;
         board_.at(sm.current_row, sm.current_col).passive = PassiveType::NONE;
+        board_.at(sm.current_row, sm.current_col).combo_streak = 0;
+        board_.at(sm.current_row, sm.current_col).combo_direction = 0;
         board_.at(next_r, next_c).value = sm.value;
         board_.at(next_r, next_c).passive = sm.passive;
 

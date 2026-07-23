@@ -36,6 +36,8 @@ struct TileEntry {
     int value;
     int orig;  // original position index
     PassiveType passive;
+    int combo_streak;
+    int combo_direction;
 };
 
 // ─── Horizontal segment processors ───
@@ -55,6 +57,8 @@ std::vector<TileEntry> process_segment_left(
         int value = tiles[j].value;
         int orig = tiles[j].orig;
         PassiveType passive = tiles[j].passive;
+        int combo_streak = tiles[j].combo_streak;
+        int combo_direction = tiles[j].combo_direction;
 
         if (value == -1) {
             // Bomb tile
@@ -68,7 +72,7 @@ std::vector<TileEntry> process_segment_left(
                 j += 2;
             } else {
                 // Bomb is last tile, just moves
-                new_vals.push_back({value, target, PassiveType::NONE});
+                new_vals.push_back({value, target, PassiveType::NONE, 0, 0});
                 if (orig != target)
                     moves.push_back({row_idx, orig, row_idx, target, value});
                 j++;
@@ -87,7 +91,10 @@ std::vector<TileEntry> process_segment_left(
             int new_value = value * 2;
             // Passive inheritance: merged tile carries both tiles' passives
             PassiveType merged_passive = combine_passives(passive, tiles[j+1].passive);
-            new_vals.push_back({new_value, target, merged_passive});
+            int merged_streak = combine_combo_streak(combo_streak, tiles[j+1].combo_streak);
+            int merged_direction = combine_combo_direction(passive, combo_direction,
+                                                            tiles[j+1].passive, tiles[j+1].combo_direction);
+            new_vals.push_back({new_value, target, merged_passive, merged_streak, merged_direction});
             if (orig != target)
                 moves.push_back({row_idx, orig, row_idx, target, value});
             if (tiles[j+1].orig != target)
@@ -97,7 +104,7 @@ std::vector<TileEntry> process_segment_left(
             target++;
         } else {
             // Just move
-            new_vals.push_back({value, target, passive});
+            new_vals.push_back({value, target, passive, combo_streak, combo_direction});
             if (orig != target)
                 moves.push_back({row_idx, orig, row_idx, target, value});
             j++;
@@ -121,6 +128,8 @@ std::vector<TileEntry> process_segment_right(
         int value = tiles[j].value;
         int orig = tiles[j].orig;
         PassiveType passive = tiles[j].passive;
+        int combo_streak = tiles[j].combo_streak;
+        int combo_direction = tiles[j].combo_direction;
 
         if (value == -1) {
             if (j > 0) {
@@ -131,7 +140,7 @@ std::vector<TileEntry> process_segment_right(
                 bomb_destroyed.insert({row_idx, target});
                 j -= 2;
             } else {
-                new_vals.insert(new_vals.begin(), {value, target, PassiveType::NONE});
+                new_vals.insert(new_vals.begin(), {value, target, PassiveType::NONE, 0, 0});
                 if (orig != target)
                     moves.push_back({row_idx, orig, row_idx, target, value});
                 j--;
@@ -147,7 +156,10 @@ std::vector<TileEntry> process_segment_right(
         } else if (j > 0 && value == tiles[j-1].value && value > 0) {
             int new_value = value * 2;
             PassiveType merged_passive = combine_passives(passive, tiles[j-1].passive);
-            new_vals.insert(new_vals.begin(), {new_value, target, merged_passive});
+            int merged_streak = combine_combo_streak(combo_streak, tiles[j-1].combo_streak);
+            int merged_direction = combine_combo_direction(passive, combo_direction,
+                                                            tiles[j-1].passive, tiles[j-1].combo_direction);
+            new_vals.insert(new_vals.begin(), {new_value, target, merged_passive, merged_streak, merged_direction});
             if (orig != target)
                 moves.push_back({row_idx, orig, row_idx, target, value});
             if (tiles[j-1].orig != target)
@@ -156,7 +168,7 @@ std::vector<TileEntry> process_segment_right(
             j -= 2;
             target--;
         } else {
-            new_vals.insert(new_vals.begin(), {value, target, passive});
+            new_vals.insert(new_vals.begin(), {value, target, passive, combo_streak, combo_direction});
             if (orig != target)
                 moves.push_back({row_idx, orig, row_idx, target, value});
             j--;
@@ -182,6 +194,8 @@ std::vector<TileEntry> process_segment_up(
         int value = tiles[i].value;
         int orig = tiles[i].orig;
         PassiveType passive = tiles[i].passive;
+        int combo_streak = tiles[i].combo_streak;
+        int combo_direction = tiles[i].combo_direction;
 
         if (value == -1) {
             if (i < (int)tiles.size() - 1) {
@@ -192,7 +206,7 @@ std::vector<TileEntry> process_segment_up(
                 bomb_destroyed.insert({target, col_idx});
                 i += 2;
             } else {
-                new_vals.push_back({value, target, PassiveType::NONE});
+                new_vals.push_back({value, target, PassiveType::NONE, 0, 0});
                 if (orig != target)
                     moves.push_back({orig, col_idx, target, col_idx, value});
                 i++;
@@ -208,7 +222,10 @@ std::vector<TileEntry> process_segment_up(
         } else if (i < (int)tiles.size() - 1 && value == tiles[i+1].value && value > 0) {
             int new_value = value * 2;
             PassiveType merged_passive = combine_passives(passive, tiles[i+1].passive);
-            new_vals.push_back({new_value, target, merged_passive});
+            int merged_streak = combine_combo_streak(combo_streak, tiles[i+1].combo_streak);
+            int merged_direction = combine_combo_direction(passive, combo_direction,
+                                                            tiles[i+1].passive, tiles[i+1].combo_direction);
+            new_vals.push_back({new_value, target, merged_passive, merged_streak, merged_direction});
             if (orig != target)
                 moves.push_back({orig, col_idx, target, col_idx, value});
             if (tiles[i+1].orig != target)
@@ -217,7 +234,7 @@ std::vector<TileEntry> process_segment_up(
             i += 2;
             target++;
         } else {
-            new_vals.push_back({value, target, passive});
+            new_vals.push_back({value, target, passive, combo_streak, combo_direction});
             if (orig != target)
                 moves.push_back({orig, col_idx, target, col_idx, value});
             i++;
@@ -241,6 +258,8 @@ std::vector<TileEntry> process_segment_down(
         int value = tiles[i].value;
         int orig = tiles[i].orig;
         PassiveType passive = tiles[i].passive;
+        int combo_streak = tiles[i].combo_streak;
+        int combo_direction = tiles[i].combo_direction;
 
         if (value == -1) {
             if (i > 0) {
@@ -251,7 +270,7 @@ std::vector<TileEntry> process_segment_down(
                 bomb_destroyed.insert({target, col_idx});
                 i -= 2;
             } else {
-                new_vals.insert(new_vals.begin(), {value, target, PassiveType::NONE});
+                new_vals.insert(new_vals.begin(), {value, target, PassiveType::NONE, 0, 0});
                 if (orig != target)
                     moves.push_back({orig, col_idx, target, col_idx, value});
                 i--;
@@ -267,7 +286,10 @@ std::vector<TileEntry> process_segment_down(
         } else if (i > 0 && value == tiles[i-1].value && value > 0) {
             int new_value = value * 2;
             PassiveType merged_passive = combine_passives(passive, tiles[i-1].passive);
-            new_vals.insert(new_vals.begin(), {new_value, target, merged_passive});
+            int merged_streak = combine_combo_streak(combo_streak, tiles[i-1].combo_streak);
+            int merged_direction = combine_combo_direction(passive, combo_direction,
+                                                            tiles[i-1].passive, tiles[i-1].combo_direction);
+            new_vals.insert(new_vals.begin(), {new_value, target, merged_passive, merged_streak, merged_direction});
             if (orig != target)
                 moves.push_back({orig, col_idx, target, col_idx, value});
             if (tiles[i-1].orig != target)
@@ -276,7 +298,7 @@ std::vector<TileEntry> process_segment_down(
             i -= 2;
             target--;
         } else {
-            new_vals.insert(new_vals.begin(), {value, target, passive});
+            new_vals.insert(new_vals.begin(), {value, target, passive, combo_streak, combo_direction});
             if (orig != target)
                 moves.push_back({orig, col_idx, target, col_idx, value});
             i--;
@@ -328,7 +350,7 @@ MoveResult move_left(Board& board,
             std::vector<TileEntry> seg_tiles;
             for (int j = seg_start; j < seg_end; j++) {
                 if (!board.at(i, j).is_empty()) {
-                    seg_tiles.push_back({board.at(i, j).value, j, board.at(i, j).passive});
+                    seg_tiles.push_back({board.at(i, j).value, j, board.at(i, j).passive, board.at(i, j).combo_streak, board.at(i, j).combo_direction});
                 }
             }
             auto new_vals = process_segment_left(seg_tiles, i, seg_start,
@@ -339,9 +361,13 @@ MoveResult move_left(Board& board,
                 if (idx < (int)new_vals.size()) {
                     board.at(i, col).value = new_vals[idx].value;
                     board.at(i, col).passive = new_vals[idx].passive;
+                    board.at(i, col).combo_streak = new_vals[idx].combo_streak;
+                    board.at(i, col).combo_direction = new_vals[idx].combo_direction;
                 } else {
                     board.at(i, col).value = 0;
                     board.at(i, col).passive = PassiveType::NONE;
+                    board.at(i, col).combo_streak = 0;
+                    board.at(i, col).combo_direction = 0;
                 }
             }
         }
@@ -373,7 +399,7 @@ MoveResult move_right(Board& board,
             std::vector<TileEntry> seg_tiles;
             for (int j = seg_start; j < seg_end; j++) {
                 if (!board.at(i, j).is_empty()) {
-                    seg_tiles.push_back({board.at(i, j).value, j, board.at(i, j).passive});
+                    seg_tiles.push_back({board.at(i, j).value, j, board.at(i, j).passive, board.at(i, j).combo_streak, board.at(i, j).combo_direction});
                 }
             }
             auto new_vals = process_segment_right(seg_tiles, i, seg_end,
@@ -386,9 +412,13 @@ MoveResult move_right(Board& board,
                 if (right_idx >= 0) {
                     board.at(i, col).value = new_vals[right_idx].value;
                     board.at(i, col).passive = new_vals[right_idx].passive;
+                    board.at(i, col).combo_streak = new_vals[right_idx].combo_streak;
+                    board.at(i, col).combo_direction = new_vals[right_idx].combo_direction;
                 } else {
                     board.at(i, col).value = 0;
                     board.at(i, col).passive = PassiveType::NONE;
+                    board.at(i, col).combo_streak = 0;
+                    board.at(i, col).combo_direction = 0;
                 }
             }
         }
@@ -420,7 +450,7 @@ MoveResult move_up(Board& board,
             std::vector<TileEntry> seg_tiles;
             for (int row = seg_start; row < seg_end; row++) {
                 if (!board.at(row, col).is_empty()) {
-                    seg_tiles.push_back({board.at(row, col).value, row, board.at(row, col).passive});
+                    seg_tiles.push_back({board.at(row, col).value, row, board.at(row, col).passive, board.at(row, col).combo_streak, board.at(row, col).combo_direction});
                 }
             }
             auto new_vals = process_segment_up(seg_tiles, col, seg_start,
@@ -431,9 +461,13 @@ MoveResult move_up(Board& board,
                 if (idx < (int)new_vals.size()) {
                     board.at(row, col).value = new_vals[idx].value;
                     board.at(row, col).passive = new_vals[idx].passive;
+                    board.at(row, col).combo_streak = new_vals[idx].combo_streak;
+                    board.at(row, col).combo_direction = new_vals[idx].combo_direction;
                 } else {
                     board.at(row, col).value = 0;
                     board.at(row, col).passive = PassiveType::NONE;
+                    board.at(row, col).combo_streak = 0;
+                    board.at(row, col).combo_direction = 0;
                 }
             }
         }
@@ -465,7 +499,7 @@ MoveResult move_down(Board& board,
             std::vector<TileEntry> seg_tiles;
             for (int row = seg_start; row < seg_end; row++) {
                 if (!board.at(row, col).is_empty()) {
-                    seg_tiles.push_back({board.at(row, col).value, row, board.at(row, col).passive});
+                    seg_tiles.push_back({board.at(row, col).value, row, board.at(row, col).passive, board.at(row, col).combo_streak, board.at(row, col).combo_direction});
                 }
             }
             auto new_vals = process_segment_down(seg_tiles, col, seg_end,
@@ -478,9 +512,13 @@ MoveResult move_down(Board& board,
                 if (down_idx >= 0) {
                     board.at(row, col).value = new_vals[down_idx].value;
                     board.at(row, col).passive = new_vals[down_idx].passive;
+                    board.at(row, col).combo_streak = new_vals[down_idx].combo_streak;
+                    board.at(row, col).combo_direction = new_vals[down_idx].combo_direction;
                 } else {
                     board.at(row, col).value = 0;
                     board.at(row, col).passive = PassiveType::NONE;
+                    board.at(row, col).combo_streak = 0;
+                    board.at(row, col).combo_direction = 0;
                 }
             }
         }

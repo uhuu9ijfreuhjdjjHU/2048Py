@@ -110,6 +110,8 @@ std::vector<int>   to_flat_values()            // Serialize for Python
 struct Tile {
     int value;           // 0=empty, -1=bomb, -2=snail, -3=wall, else power-of-2
     PassiveType passive; // Bitmask of passive flags
+    int combo_streak;    // Consecutive-merge counter for the Combo passive
+    int combo_direction; // Combo passive's stored direction (bitmask, COMBO_DIR_*)
 };
 ```
 
@@ -124,12 +126,16 @@ enum class PassiveType : int {
     NONE         = 0,
     A_LITTLE_SLOW = 1,   // Tile moves 1 cell/turn, frozen during regular move
     CONTRARIAN   = 2,    // Tile moves in the opposite player direction
+    COMBO        = 4,    // Merging it scores new_value * combo_streak extra
 };
 
 bool has_passive(PassiveType stored, PassiveType flag); // Bitwise AND check
+int combine_combo_streak(int a, int b);                 // max(a, b) on merge (carry only, no growth)
+int combine_combo_direction(PassiveType a_passive, int a_dir,
+                             PassiveType b_passive, int b_dir);  // OR of directions from Combo sources
 ```
 
-Passives are bitmasks. A tile can hold both (value `3` = slow + contrarian = "Slow Contrarian").
+Passives are bitmasks. A tile can hold several at once (e.g. value `3` = slow + contrarian = "Slow Contrarian"). `combo_streak` and `combo_direction` ride along on every tile (not just Combo ones) so the merge code can update them unconditionally; they only affect scoring on a tile that also carries the `COMBO` bit. The streak's growth is gated centrally in `GameEngine::process_move`: a merged Combo tile only extends its streak (and scores) if the player's move direction matches the tile's pre-move `combo_direction`; otherwise (no merge, or a wrong-direction merge) the streak resets to 0. `combo_direction` itself re-rolls to a fresh random direction on every turn for any tile currently carrying `COMBO`, regardless of hit/miss.
 
 ---
 
@@ -166,9 +172,9 @@ struct MoveResult {
 ### Merging Rules
 
 - Two tiles of equal value merge into a doubled tile.
-- The merged tile carries the **OR of both sources' passives** (`combine_passives` in `passive.h`). This rule applies in every merge path engine-wide: segment merges, behind-merges, contrarian merges, slow-mover arrivals, and frozen-slow-mover merges.
+- The merged tile carries the **OR of both sources' passives** (`combine_passives` in `passive.h`), the **carried-forward combo streak** (`combine_combo_streak`, `max(a, b)`), and the **OR'd combo direction** (`combine_combo_direction`, gated to sources that actually carry `COMBO`). This rule applies in every merge path engine-wide: segment merges, behind-merges, contrarian merges, slow-mover arrivals, and frozen-slow-mover merges.
 - Multiple merges per segment are allowed (e.g., `2 2 2 2` → `4 4` → `8`).
-- Every merge awards its doubled value as points, regardless of which phase performs it.
+- Every merge awards its doubled value as points, regardless of which phase performs it. A merge result carrying the `COMBO` passive additionally awards `new_value * combo_streak` **if** the player's move direction matched the tile's pre-move `combo_direction` (see `GameEngine::process_move` in `game_engine.cpp`); otherwise the streak resets to 0 without a bonus.
 
 ---
 
@@ -312,7 +318,7 @@ struct TurnResult {
 };
 ```
 
-`points_gained` sums every merge channel: `merges`, `slow_tile_merges`, and `slow_mover_updates` entries with `is_merge` set.
+`points_gained` sums every merge channel — `merges`, `slow_tile_merges`, and `slow_mover_updates` entries with `is_merge` set — plus any Combo passive bonus (`new_value * combo_streak`) on merged tiles that carry it and whose stored direction matched the move.
 
 ---
 

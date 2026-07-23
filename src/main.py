@@ -82,8 +82,6 @@ g.ui_config = {
     'score_y': 50,             # Y position of score text from top edge
     'points_x': 50,            # X position of points text from left edge
     'points_y': 90,            # Y position of points text from top edge
-    'momentum_x': 50,          # X position of momentum direction arrows
-    'momentum_y': 135,         # Y position of momentum direction arrows
 }
 
 # Grid state - tracks current grid dimensions and tile size
@@ -112,13 +110,13 @@ g.playingGrid = np.array(g.engine.get_grid_values(), dtype=int).reshape(g.rows, 
 # Both accumulate together, but only points are deducted by shop purchases.
 g.score = g.engine.score()
 g.points = g.engine.score()
-g.score_bonus = 0  # cumulative Momentum bonus, added on top of the engine score
 
 # Audio
 g.audio = AudioManager("assets/audio/music/2048squaredMain.mp3")
 
 # Passive tracking
 g.passive_map = {}         # {(r,c): passive_type_int}
+g.combo_directions = {}    # {(r,c): direction_str}, only for tiles carrying COMBO
 g.pending_passives = []    # [(row, col, tile_value), ...]
 g.passive_menu_open = False
 g.passive_menu_tile = None
@@ -130,8 +128,6 @@ g.abilities = [
     {'name': 'Switch', 'cost': 1550, 'charges': 0, 'description': 'Move any tile'},
 ]
 g.expansion_count = 0
-# Momentum upgrade: combos in a highlighted direction get a doubling multiplier
-g.momentum = {'owned': False, 'cost': 8000, 'direction': None, 'multiplier': 2}
 g.selecting_bomb_position = False
 g.selecting_freeze_position = False
 g.selecting_switch_position = False
@@ -350,8 +346,6 @@ while running:
     g.render_surface.blit(score_text, (g.ui_config['score_x'], g.ui_config['score_y']))
     points_text = func.get_cached_points(g, g.points)
     g.render_surface.blit(points_text, (g.ui_config['points_x'], g.ui_config['points_y']))
-    if g.momentum['owned']:
-        func.draw_momentum_arrows(g)
 
     # Temporarily override start positions for expansion animation
     _expand_real_sx, _expand_real_sy = g.start_x, g.start_y

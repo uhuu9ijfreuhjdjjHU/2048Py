@@ -94,11 +94,20 @@ bool ContrarianBehavior::advance(MoveContext& ctx, TurnResult& result) {
             // Immediate merge: pure contrarian (moves full distance) or
             // slow contrarian adjacent to its merge target.
             int new_value = tile_value * 2;
+            int cr_streak = board.at(cr, cc).combo_streak;
+            int cr_direction = board.at(cr, cc).combo_direction;
             board.at(cr, cc).value = 0;
             board.at(cr, cc).passive = PassiveType::NONE;
+            board.at(cr, cc).combo_streak = 0;
+            board.at(cr, cc).combo_direction = 0;
             board.at(dest_r, dest_c).value = new_value;
+            board.at(dest_r, dest_c).combo_direction = combine_combo_direction(
+                tile_passive, cr_direction,
+                board.at(dest_r, dest_c).passive, board.at(dest_r, dest_c).combo_direction);
             board.at(dest_r, dest_c).passive = combine_passives(tile_passive,
                                                                 board.at(dest_r, dest_c).passive);
+            board.at(dest_r, dest_c).combo_streak = combine_combo_streak(cr_streak,
+                                                                         board.at(dest_r, dest_c).combo_streak);
             result.slow_tile_moves.push_back({cr, cc, dest_r, dest_c, tile_value});
             result.slow_tile_merges.push_back({dest_r, dest_c, new_value});
         } else {

@@ -45,11 +45,19 @@ bool SlowBehavior::advance(MoveContext& ctx, TurnResult& result) {
             int new_value = tile_value * 2;
             result.slow_tile_moves.push_back({behind_r, behind_c, sr, sc, tile_value});
             result.slow_tile_merges.push_back({sr, sc, new_value});
+            int merged_streak = combine_combo_streak(board.at(sr, sc).combo_streak,
+                                                      board.at(behind_r, behind_c).combo_streak);
+            int merged_direction = combine_combo_direction(board.at(sr, sc).passive, board.at(sr, sc).combo_direction,
+                                                            board.at(behind_r, behind_c).passive, board.at(behind_r, behind_c).combo_direction);
             board.at(sr, sc).passive = combine_passives(board.at(sr, sc).passive,
                                                         board.at(behind_r, behind_c).passive);
             board.at(behind_r, behind_c).value = 0;
             board.at(behind_r, behind_c).passive = PassiveType::NONE;
+            board.at(behind_r, behind_c).combo_streak = 0;
+            board.at(behind_r, behind_c).combo_direction = 0;
             board.at(sr, sc).value = new_value;
+            board.at(sr, sc).combo_streak = merged_streak;
+            board.at(sr, sc).combo_direction = merged_direction;
             tile_value = new_value;
             changed = true;
         }
@@ -96,11 +104,20 @@ bool SlowBehavior::advance(MoveContext& ctx, TurnResult& result) {
             // Immediate forward merge.
             int new_value = tile_value * 2;
             PassiveType sr_passive = board.at(sr, sc).passive;
+            int sr_streak = board.at(sr, sc).combo_streak;
+            int sr_direction = board.at(sr, sc).combo_direction;
             board.at(sr, sc).value = 0;
             board.at(sr, sc).passive = PassiveType::NONE;
+            board.at(sr, sc).combo_streak = 0;
+            board.at(sr, sc).combo_direction = 0;
             board.at(dest_r, dest_c).value = new_value;
+            board.at(dest_r, dest_c).combo_direction = combine_combo_direction(
+                sr_passive, sr_direction,
+                board.at(dest_r, dest_c).passive, board.at(dest_r, dest_c).combo_direction);
             board.at(dest_r, dest_c).passive = combine_passives(sr_passive,
                                                                 board.at(dest_r, dest_c).passive);
+            board.at(dest_r, dest_c).combo_streak = combine_combo_streak(sr_streak,
+                                                                         board.at(dest_r, dest_c).combo_streak);
             result.slow_tile_moves.push_back({sr, sc, dest_r, dest_c, tile_value});
             result.slow_tile_merges.push_back({dest_r, dest_c, new_value});
             changed = true;
@@ -147,12 +164,22 @@ bool SlowBehavior::advance(MoveContext& ctx, TurnResult& result) {
         PassiveType merged_passive = combine_passives(
             board.at(sm.current_row, sm.current_col).passive,
             board.at(adj_r, adj_c).passive);
+        int merged_streak = combine_combo_streak(
+            board.at(sm.current_row, sm.current_col).combo_streak,
+            board.at(adj_r, adj_c).combo_streak);
+        int merged_direction = combine_combo_direction(
+            board.at(sm.current_row, sm.current_col).passive, board.at(sm.current_row, sm.current_col).combo_direction,
+            board.at(adj_r, adj_c).passive, board.at(adj_r, adj_c).combo_direction);
         board.at(adj_r, adj_c).value = 0;
         board.at(adj_r, adj_c).passive = PassiveType::NONE;
+        board.at(adj_r, adj_c).combo_streak = 0;
+        board.at(adj_r, adj_c).combo_direction = 0;
         sm.value = new_value;
         sm.passive = merged_passive;  // keeps future steps carrying the combined bits
         board.at(sm.current_row, sm.current_col).value = new_value;
         board.at(sm.current_row, sm.current_col).passive = merged_passive;
+        board.at(sm.current_row, sm.current_col).combo_streak = merged_streak;
+        board.at(sm.current_row, sm.current_col).combo_direction = merged_direction;
 
         // These go into main animation channels since they animate in phase 1.
         result.moves.push_back({adj_r, adj_c, sm.current_row, sm.current_col, old_adj_value});
